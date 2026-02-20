@@ -1,264 +1,207 @@
 # AI Team
 
-A bash template that spins up AI agent teams using tmux + Claude CLI.
-One script to create and manage agent teams per project.
+Personas, hooks, and multi-LLM orchestration for [Claude Code Agent Teams](https://code.claude.com/docs/en/agent-teams).
+
+Agent Teams handles spawning and coordination natively. This repo adds **personas**, **quality-gate hooks**, and a **pluggable external agent system** that lets you call any LLM (Gemini, GPT, Codex, local models) as part of the workflow.
 
 ## Quick Start
 
-```bash
-cd ai-team
-bash ai-team.sh        # select a project or create new
+### 1. Enable Agent Teams
+
+Add to your Claude Code settings (`~/.claude/settings.json`):
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}
 ```
 
-## UX Flow
+### 2. Install Hooks (optional)
 
-### First Run
+Copy the hooks to your project and register them in `.claude/settings.json`:
 
-```
-  Language: 1) English  2) 한국어
-  Select [1]: ⏎
-
-🚀 AI Team Setup
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  1) AI auto setup — describe your project
-  2) Manual setup — configure each item
-
-  Select [1]: ⏎
-```
-
-**Mode 1: AI Auto Setup** — Describe your project in one line, AI suggests config values.
-Press Enter to accept each suggestion, or type to override.
-
-```
-  Describe your project:
-  > Next.js web app + Fastify API, repos at ~/Code/web and ~/Code/api
-
-  ⠋ Generating AI suggestions 3s
-
-  ✓ AI suggestions ready — Enter to accept, type to change
-  ──────────────────────────────────────
-
-  Project name [MyApp]: ⏎
-  Session name [myapp-team]: ⏎
-
-  ── Repositories ──
-  How many repos? [2]: ⏎
-  Repo 1 path [/Users/you/Code/web]: ⏎
-  Repo 1 label [Web App]: ⏎
-  Repo 1 stack [Next.js, React, TypeScript]: ⏎
-  ...
-
-  ── Agents ──
-  How many agents? [3]: ⏎
-  Agent 1 ID [frontend-dev]: ⏎
-  Agent 1 persona [Dan Abramov]: ⏎
-  ...
+```json
+{
+  "hooks": {
+    "TaskCompleted": [
+      { "command": "/path/to/hooks/task-completed.sh" }
+    ],
+    "TeammateIdle": [
+      { "command": "/path/to/hooks/teammate-idle.sh" }
+    ]
+  }
+}
 ```
 
-**Mode 2: Manual Setup** — Fill in each field yourself.
+### 3. Add External Agents (optional)
 
-### Existing Projects
-
-```
-  Existing projects:
-    1) myapp-team
-    2) another-project
-    3) + New project
-
-  Select [1]: ⏎
-  Starting AI Team...
-```
-
-Pick a number to launch, or select the last option to create a new project.
-
-### Direct Launch
+Copy an example from `external-agents/examples/` to `external-agents/`:
 
 ```bash
-bash ai-team.sh myapp-team           # by project name
-bash ai-team.sh projects/my-team/team.config.sh   # by config path
+cp -r external-agents/examples/gemini-reviewer external-agents/gemini-reviewer
 ```
 
-## File Structure
+Edit `agent.sh` to set your LLM command. The `task-completed` hook will automatically dispatch to all configured external agents.
+
+### 4. Start a Team
+
+Launch Claude Code and use `/teammates` to configure your team. Use the personas from `personas/` as system prompts, and refer to `templates/team-prompt-example.md` for a Team Lead prompt.
+
+## Architecture
 
 ```
-ai-team/
-  ai-team.sh                  # main launcher (reusable template)
-  team.config.sh.example      # config reference with full examples
-  .ai-team-lang               # saved language preference (en/ko)
-  .env.example                # secrets template
-  .gitignore                  # excludes projects/, .env
-  projects/
-    myapp-team/
-      team.config.sh           # per-project config
-    another-project/
-      team.config.sh
+┌──────────────────────────────┬─────────────────────────┐
+│   Claude Agent Teams         │   External Agents       │
+│   (native coordination)     │   (any LLM via CLI)     │
+│                              │                         │
+│   Lead ─► Dev (Claude)       │   gemini-reviewer/      │
+│        ─► Dev (Claude)       │   codex-coder/          │
+│        ─► QA  (Claude)  ◄────┤   gpt-security/         │
+│                              │   your-custom-agent/    │
+└──────────┬───────────────────┴────────────┬────────────┘
+           │        hooks/                  │
+           ├── task-completed.sh ───────────┘
+           ├── teammate-idle.sh    (triggers external agents
+           └── run-external-agents.sh  after tests pass)
 ```
 
-`ai-team.sh` stays as a reusable template. Each project config lives in `projects/<name>/`.
+## Personas
 
-## Features
+Pre-built agent personas with philosophy, verification steps, and output format requirements.
 
-- **AI Auto Setup**: Describe your project, `claude` CLI suggests the config
-- **Manual Setup**: Step-by-step interactive wizard
-- **Multi-language**: English / Korean (selected on first run, saved to `.ai-team-lang`)
-- **Multi-project**: Manage multiple projects under `projects/`
-- **Auto directory creation**: Missing repo paths trigger `mkdir -p` + `git init` + optional GitHub repo creation
-- **Feedback pipeline**: Real-time feedback collection via WebSocket/API (optional)
+| File | Role | Tech Stack |
+|------|------|------------|
+| [`personas/dhh.md`](personas/dhh.md) | Backend Dev | Rails, GraphQL, PostgreSQL |
+| [`personas/chris-lattner.md`](personas/chris-lattner.md) | iOS/Frontend Dev | Swift, SwiftUI, Apollo |
+| [`personas/kent-beck.md`](personas/kent-beck.md) | QA | TDD, Code Review, Coverage |
 
-## Config Reference
+### Writing Your Own Persona
 
-### Project
+A good persona prompt includes:
+1. **Philosophy** — What principles guide this agent's coding decisions?
+2. **Anti-patterns** — What should this agent never do?
+3. **Verification** — What commands must run before declaring "done"?
+4. **Output format** — Structured reporting (Changes Made, Tests, QA Report)
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `PROJECT_NAME` | Yes | Project name (shown on Status Board) |
-| `SESSION_NAME` | Yes | tmux session name |
+## External Agents
 
-### Repositories
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `REPO_COUNT` | Yes | Number of repositories (1~N) |
-| `REPO_N_PATH` | Yes | Absolute path to repository |
-| `REPO_N_LABEL` | Yes | Display name (e.g. "Backend") |
-| `REPO_N_STACK` | Yes | Tech stack summary |
-
-### Agents
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `AGENT_COUNT` | Yes | Number of agents (1~N) |
-| `AGENT_N_ID` | Yes | Unique ID (used in filenames) |
-| `AGENT_N_NAME` | No | Display name (defaults to ID) |
-| `AGENT_N_PERSONA` | No | Persona name (e.g. "DHH") |
-| `AGENT_N_SUBTITLE` | No | Subtitle (e.g. "Creator of Rails") |
-| `AGENT_N_TECH` | No | Tech tags |
-| `AGENT_N_COLOR` | No | Color: RED/GRN/YEL/BLU/MAG/CYN/WHT/GRY |
-| `AGENT_N_REPO` | Yes | Repo index (1-based) |
-| `AGENT_N_PROMPT` | No | System prompt (inline) |
-| `AGENT_N_PROMPT_FILE` | No | System prompt (external file) |
-
-**Prompt variables** (auto-substituted):
-- `$PROJECT_PATH` → agent's repo path
-- `$PROJECT_STACK` → agent's repo stack
-- `$REPO_N_PATH`, `$REPO_N_STACK`, `$REPO_N_LABEL` → reference specific repos
-
-### PM
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `PM_DEPLOY_COMMAND` | No | Deploy command to run after QA passes |
-
-### Feedback Pipeline
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `FEEDBACK_ENABLED` | No | Set to `true` to enable feedback watcher |
-| `FEEDBACK_WS_URL` | No | ActionCable WebSocket URL |
-| `FEEDBACK_API_URL` | No | API polling URL |
-| `FEEDBACK_CHANNEL` | No | ActionCable channel name |
-| `FEEDBACK_POLL_INTERVAL` | No | Polling interval in seconds (default 60) |
-
-Secrets go in `.env`:
-```bash
-FEEDBACK_ADMIN_TOKEN=your_token
-```
-
-## tmux Layout
+Plug any LLM into the workflow. Each external agent is a directory with two files:
 
 ```
-┌──────────┬──────────┬──────────┬─── ─ ─ ──┐
-│  Status  │ Agent 1  │ Agent 2  │ Agent N  │
-│  Board   │          │          │          │
-├──────────┤          │          │          │
-│   PM     │          │          │          │
-└──────────┴──────────┴──────────┴─── ─ ─ ──┘
+external-agents/
+├── _template/          # Copy this to create your own
+│   ├── agent.sh        # LLM command + trigger + input mode
+│   └── persona.md      # System prompt
+└── examples/
+    ├── gemini-reviewer/ # Long-context code review
+    ├── codex-coder/     # Alternative implementation suggestions
+    └── gpt-security/    # OWASP security audit
 ```
 
-Auto-splits by agent count. Left panel (Status + PM) 25% | Right panels split equally 75%.
-
-## Examples
-
-### 1. Next.js + Fastify
+### `agent.sh` Configuration
 
 ```bash
-PROJECT_NAME="MyApp"
-SESSION_NAME="myapp-team"
-REPO_COUNT=2
-REPO_1_PATH="$HOME/Code/myapp-web"
-REPO_1_LABEL="Web App"
-REPO_1_STACK="Next.js, React, TypeScript, Tailwind"
-REPO_2_PATH="$HOME/Code/myapp-api"
-REPO_2_LABEL="API Server"
-REPO_2_STACK="Node.js, Fastify, PostgreSQL, Prisma"
-AGENT_COUNT=3   # Frontend Dev, Backend Dev, QA
+COMMAND="gemini -m gemini-2.5-pro"   # Any CLI that reads stdin
+TRIGGER="task-completed"              # When to run
+INPUT="changed-files"                 # What to feed it
 ```
 
-### 2. Go + React
+| `TRIGGER` | When |
+|-----------|------|
+| `task-completed` | After a dev teammate finishes (and tests pass) |
+| `pre-commit` | Before committing changes |
+| `on-demand` | Only when explicitly called |
+
+| `INPUT` | What gets piped to the LLM |
+|---------|---------------------------|
+| `changed-files` | Full content of changed files |
+| `full-diff` | `git diff` output |
+| `staged` | Staged files content |
+
+### Adding Your Own
 
 ```bash
-PROJECT_NAME="MyAPI"
-REPO_COUNT=2
-REPO_1_PATH="$HOME/Code/api"
-REPO_1_LABEL="API"
-REPO_1_STACK="Go 1.22, gRPC, PostgreSQL"
-REPO_2_PATH="$HOME/Code/web"
-REPO_2_LABEL="Web"
-REPO_2_STACK="TypeScript, React 19, Vite"
-
-AGENT_COUNT=2
-AGENT_1_ID="api-dev"
-AGENT_1_PERSONA="Rob Pike"
-AGENT_1_SUBTITLE="Creator of Go"
-AGENT_1_TECH="Go · gRPC · PostgreSQL"
-AGENT_1_COLOR="CYN"
-AGENT_1_REPO=1
-
-AGENT_2_ID="web-dev"
-AGENT_2_PERSONA="Dan Abramov"
-AGENT_2_SUBTITLE="Creator of Redux"
-AGENT_2_TECH="React · TypeScript · Vite"
-AGENT_2_COLOR="YEL"
-AGENT_2_REPO=2
+cp -r external-agents/_template external-agents/my-agent
+# Edit agent.sh: set COMMAND, TRIGGER, INPUT
+# Edit persona.md: write your system prompt
 ```
 
-### 3. Python + Flutter
+The dispatcher (`hooks/run-external-agents.sh`) auto-discovers all agents in `external-agents/` and runs those matching the current trigger. Results are saved to `.claude/external-reviews/<agent-name>.md` for the QA teammate to consume.
+
+## Hooks
+
+### `task-completed.sh`
+
+Runs when a dev teammate completes a task:
+1. **Tests** — Auto-detects framework and runs tests (rspec, npm test, xcodebuild)
+2. **External agents** — Dispatches to all `task-completed` external agents (non-blocking)
+
+QA teammates are excluded. Exits with code 2 on test failure.
+
+### `teammate-idle.sh`
+
+Validates output format before a teammate goes idle:
+- **Dev teammates**: Must include `## Changes Made` and `## Tests`
+- **QA teammates**: Must include `## QA Report` and a `PASS`/`FAIL` verdict
+
+### `run-external-agents.sh`
+
+Generic dispatcher — scans `external-agents/*/agent.sh`, matches trigger, pipes persona + input to the LLM CLI, saves output. Called by other hooks or manually:
 
 ```bash
-PROJECT_NAME="HealthApp"
-REPO_COUNT=2
-REPO_1_PATH="$HOME/Code/health-api"
-REPO_1_STACK="Python 3.12, FastAPI, SQLAlchemy"
-REPO_2_PATH="$HOME/Code/health-mobile"
-REPO_2_STACK="Dart, Flutter 3, Riverpod"
-
-AGENT_COUNT=4
-AGENT_1_ID="api-dev"
-AGENT_1_PERSONA="Guido van Rossum"
-AGENT_1_COLOR="BLU"
-AGENT_1_REPO=1
-
-AGENT_2_ID="mobile-dev"
-AGENT_2_PERSONA="Eric Seidel"
-AGENT_2_COLOR="CYN"
-AGENT_2_REPO=2
-
-AGENT_3_ID="ml-dev"
-AGENT_3_PERSONA="Andrej Karpathy"
-AGENT_3_COLOR="GRN"
-AGENT_3_REPO=1
-
-AGENT_4_ID="qa"
-AGENT_4_PERSONA="Kent Beck"
-AGENT_4_COLOR="MAG"
-AGENT_4_REPO=1
+./hooks/run-external-agents.sh task-completed /path/to/project
+./hooks/run-external-agents.sh pre-commit /path/to/project
 ```
 
-## Requirements
+## Templates
 
-- `tmux` (1.8+)
-- `claude` CLI (Claude Code)
-- `python3` (for feedback watcher, optional)
-- `git`
-- `gh` (GitHub CLI, optional — for auto repo creation)
+| File | Description |
+|------|-------------|
+| [`templates/claude-md-example.md`](templates/claude-md-example.md) | Project `CLAUDE.md` rules for teams (testing, git, output format) |
+| [`templates/team-prompt-example.md`](templates/team-prompt-example.md) | Team Lead initial prompt with full workflow |
+
+## Workflow
+
+```
+User describes task
+       │
+       ▼
+  Team Lead reads 2-3 key files
+       │
+       ▼
+  Team Lead writes detailed task specs
+       │
+       ▼
+  Dev teammates implement  ◄──────────────┐
+       │                                   │
+       ▼                                   │
+  hook: tests run automatically            │
+       │                                   │
+       ▼                                   │
+  hook: external agents review in parallel │
+  (Gemini, GPT, Codex, ...)               │
+       │                                   │
+       ▼                                   │
+  QA teammate reviews                      │
+  (own review + external reviews)          │
+       │                                   │
+   ┌───┴───┐                               │
+   ▼       ▼                               │
+ PASS    FAIL ─────────────────────────────┘
+   │      (max 2 retries)
+   ▼
+ Commit specific files
+       │
+       ▼
+    Deploy
+```
+
+## v1 (Legacy)
+
+The original version was a 2000-line bash script (`ai-team.sh`) that orchestrated Claude Code agents via tmux panes with file-based IPC. With the release of [Agent Teams](https://code.claude.com/docs/en/agent-teams), the bash infrastructure is no longer needed. The personas, QA workflow, and hooks from v1 are preserved in this repo.
+
+## License
+
+MIT
