@@ -6,6 +6,12 @@ Agent Teams handles spawning and coordination natively. This repo adds **persona
 
 ## Quick Start
 
+```bash
+bash setup.sh    # interactive wizard — does steps 1~3 automatically
+```
+
+Or manually:
+
 ### 1. Enable Agent Teams
 
 Add to your Claude Code settings (`~/.claude/settings.json`):
@@ -73,7 +79,12 @@ Pre-built agent personas with philosophy, verification steps, and output format 
 
 | File | Role | Tech Stack |
 |------|------|------------|
+| [`personas/dan-abramov.md`](personas/dan-abramov.md) | Frontend Dev | React, Redux, TypeScript |
 | [`personas/dhh.md`](personas/dhh.md) | Backend Dev | Rails, GraphQL, PostgreSQL |
+| [`personas/ryan-dahl.md`](personas/ryan-dahl.md) | Backend Dev | Node.js, Deno, TypeScript |
+| [`personas/rob-pike.md`](personas/rob-pike.md) | Backend Dev | Go, gRPC, Systems |
+| [`personas/guido-van-rossum.md`](personas/guido-van-rossum.md) | Backend Dev | Python, FastAPI, SQLAlchemy |
+| [`personas/guillermo-rauch.md`](personas/guillermo-rauch.md) | Fullstack Dev | Next.js, Vercel, Edge |
 | [`personas/chris-lattner.md`](personas/chris-lattner.md) | iOS/Frontend Dev | Swift, SwiftUI, Apollo |
 | [`personas/kent-beck.md`](personas/kent-beck.md) | QA | TDD, Code Review, Coverage |
 
