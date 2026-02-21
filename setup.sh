@@ -494,7 +494,12 @@ if [[ "$MODE" != "config" ]]; then
 Output ONLY lines in this exact format (no quotes, no comments, no blank lines):
 PERSONA=name
 Where name is one of: dhh, chris-lattner, dan-abramov, guillermo-rauch, ryan-dahl, rob-pike, guido-van-rossum
-Pick ONLY personas that match the tech stack. Always include kent-beck last for QA.
+Rules:
+- Pick 1-3 personas MAX. Be selective — only the BEST matches for the CORE tech stack.
+- A native iOS app does NOT need React or Node personas.
+- A web app does NOT need Swift personas.
+- Do NOT guess — if a technology is not mentioned or clearly implied, skip that persona.
+- Always include kent-beck last for QA.
 Output NOTHING else.'
 
     _ai_file=$(mktemp)
