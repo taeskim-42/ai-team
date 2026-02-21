@@ -32,25 +32,41 @@ DESCRIPTION="${2:-}"
 
 printf "\n${_B}🚀 AI Team Setup${_R}\n\n"
 
-# Interactive: ask for path and description if not provided
-if [[ -z "$PROJECT_PATH" ]]; then
-  read -e -r -p "${_s}${_CYN}${_e}프로젝트 경로${_s}${_R}${_e}: " PROJECT_PATH
-  if [[ -z "$PROJECT_PATH" ]]; then
-    err "프로젝트 경로를 입력해주세요."; exit 1
+# Interactive: description first, then derive project path
+if [[ -z "$DESCRIPTION" && -z "$PROJECT_PATH" ]]; then
+  # Fully interactive — ask description first
+  printf "  ${_D}예: Rails 8 백엔드 + Swift iOS 앱. 운동 추적 서비스.${_R}\n"
+  read -e -r -p "${_s}${_CYN}${_e}무엇을 만들 건가요?${_s}${_R}${_e} " DESCRIPTION
+  if [[ -z "$DESCRIPTION" ]]; then
+    err "프로젝트 설명을 입력해주세요."; exit 1
   fi
-fi
 
-PROJECT_PATH="${PROJECT_PATH/#\~/$HOME}"
-PROJECT_PATH="$(cd "$PROJECT_PATH" 2>/dev/null && pwd || echo "$PROJECT_PATH")"
-PROJECT_NAME="$(basename "$PROJECT_PATH")"
+  # Suggest a project name from description (first word, lowercased, ascii-safe)
+  _suggested=$(echo "$DESCRIPTION" | tr '[:upper:]' '[:lower:]' | \
+    sed 's/[^a-z0-9 ]//g' | awk '{print $1}' | head -c 30)
+  _suggested="${_suggested:-my-project}"
+  _default_path="$HOME/Projects/$_suggested"
 
-if [[ -z "$DESCRIPTION" ]]; then
-  printf "\n  ${_D}예: Rails 8 백엔드 + Swift iOS 앱. 운동 추적 서비스.${_R}\n"
+  printf "\n"
+  read -e -r -p "${_s}${_CYN}${_e}프로젝트 경로${_s}${_R}${_e} ${_s}${_GRY}${_e}[${_default_path}]${_s}${_R}${_e}: " PROJECT_PATH
+  PROJECT_PATH="${PROJECT_PATH:-$_default_path}"
+elif [[ -z "$DESCRIPTION" ]]; then
+  # Path given but no description
+  printf "  ${_D}예: Rails 8 백엔드 + Swift iOS 앱. 운동 추적 서비스.${_R}\n"
   read -e -r -p "${_s}${_CYN}${_e}무엇을 만들 건가요?${_s}${_R}${_e} " DESCRIPTION
   if [[ -z "$DESCRIPTION" ]]; then
     err "프로젝트 설명을 입력해주세요."; exit 1
   fi
 fi
+
+PROJECT_PATH="${PROJECT_PATH/#\~/$HOME}"
+# Resolve to absolute path (works for both existing and new paths)
+if [[ -d "$PROJECT_PATH" ]]; then
+  PROJECT_PATH="$(cd "$PROJECT_PATH" && pwd)"
+elif [[ "$PROJECT_PATH" != /* ]]; then
+  PROJECT_PATH="$(pwd)/$PROJECT_PATH"
+fi
+PROJECT_NAME="$(basename "$PROJECT_PATH")"
 
 printf "\n  ${_D}%s — %s${_R}\n" "$PROJECT_NAME" "$DESCRIPTION"
 
