@@ -2,13 +2,26 @@
 # External Agent Configuration
 # Copy this directory and customize for your LLM.
 
-# CLI command to invoke the LLM
+# ── Mode 1: CLI ──────────────────────────────────────────────
+# Pipe stdin to a CLI tool (must accept stdin, output to stdout).
 # Examples:
-#   "gemini -m gemini-2.5-pro"
-#   "codex --model o3"
-#   "ollama run llama3"
-#   "openai chat -m gpt-4o"
+#   COMMAND="gemini -m gemini-2.5-pro"
+#   COMMAND="codex --model o3"
+#   COMMAND="ollama run llama3"
+#   COMMAND="openai chat -m gpt-4o"
 COMMAND=""
+
+# ── Mode 2: API ──────────────────────────────────────────────
+# Use _api-bridge.sh with any OpenAI-compatible endpoint.
+# Uncomment and set these, then set COMMAND to the bridge:
+#
+#   export API_BASE="${OPENAI_BASE_URL:-https://api.openai.com/v1}"
+#   export API_KEY="${OPENAI_API_KEY}"
+#   export MODEL="gpt-4o"
+#   AGENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#   COMMAND="$AGENT_DIR/../_api-bridge.sh"
+#
+# Works with: OpenAI, LiteLLM, Azure OpenAI, Gemini proxy, etc.
 
 # When to trigger this agent
 # Options: task-completed | pre-commit | on-demand

@@ -125,9 +125,8 @@ for cli in gemini codex openai ollama; do
   command -v "$cli" &>/dev/null && { detected+=("$cli"); info "$cli CLI 감지됨"; }
 done
 
-if [[ ${#detected[@]} -eq 0 ]]; then
-  warn "외부 LLM CLI 감지 안됨 (gemini, codex, openai, ollama)"
-else
+# Phase 1: CLI-based agents
+if [[ ${#detected[@]} -gt 0 ]]; then
   for cli in "${detected[@]}"; do
     example="$(cli_to_agent "$cli")"
     if [[ -n "$example" && -d "$EXAMPLES_DIR/$example" ]]; then
@@ -142,6 +141,45 @@ else
       warn "ollama 감지됨 — external-agents/_template/에서 직접 만들어주세요"
     fi
   done
+fi
+
+# Phase 2: API-based agents (OpenAI-compatible endpoints)
+api_detected=false
+if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+  if [[ -n "${OPENAI_BASE_URL:-}" ]]; then
+    info "OpenAI-compatible proxy 감지: $OPENAI_BASE_URL"
+  else
+    info "OpenAI API 키 감지됨"
+  fi
+  api_detected=true
+fi
+if [[ -n "${GEMINI_API_KEY:-}" ]]; then
+  info "Gemini API 키 감지됨"
+  api_detected=true
+fi
+if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+  info "Anthropic API 키 감지됨"
+  api_detected=true
+fi
+
+if [[ "$api_detected" == "true" ]]; then
+  echo ""
+  echo "  API 기반 에이전트 (CLI 없이 API endpoint로 호출):"
+  for api_agent in api-reviewer api-security; do
+    if [[ -d "$EXAMPLES_DIR/$api_agent" ]]; then
+      [[ -d "$EXT_DIR/$api_agent" ]] && { skip "$api_agent 이미 활성화됨"; continue; }
+      read -e -r -p "  API → $api_agent 활성화? (Y/n): " yn
+      if [[ "${yn:-Y}" =~ ^[Yy]$ ]]; then
+        cp -r "$EXAMPLES_DIR/$api_agent" "$EXT_DIR/$api_agent"
+        info "$api_agent → external-agents/ 활성화"
+        SUMMARY+=("외부 에이전트(API): $api_agent")
+      fi
+    fi
+  done
+fi
+
+if [[ ${#detected[@]} -eq 0 && "$api_detected" != "true" ]]; then
+  warn "외부 LLM 감지 안됨 (CLI: gemini, codex, openai, ollama / API: OPENAI_API_KEY, GEMINI_API_KEY)"
 fi
 
 # ══════════════════════════════════════════════════════════════
