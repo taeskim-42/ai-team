@@ -48,7 +48,7 @@ _lang_en() {
   L_DESC_REQUIRED="Project description is required"
   L_PATH="Project path"
   L_AI_ANALYZING="AI is analyzing your project"
-  L_AI_QUESTIONS="AI has a few questions:"
+  L_AI_THINKING="Thinking"
   L_AI_COMPOSING="Composing team"
   L_AI_DONE="AI suggestion ready"
   L_AI_FALLBACK="Switching to keyword matching"
@@ -97,7 +97,7 @@ _lang_ko() {
   L_DESC_REQUIRED="프로젝트 설명을 입력해주세요"
   L_PATH="프로젝트 경로"
   L_AI_ANALYZING="AI가 프로젝트를 분석 중"
-  L_AI_QUESTIONS="AI가 몇 가지를 물어봅니다:"
+  L_AI_THINKING="생각 중"
   L_AI_COMPOSING="팀 구성 중"
   L_AI_DONE="AI 제안 완료"
   L_AI_FALLBACK="키워드 매칭으로 전환"
@@ -498,108 +498,100 @@ if [[ "$MODE" != "config" ]]; then
   # Try AI conversation (skip in non-interactive for speed)
   if command -v claude &>/dev/null && [[ "$MODE" != "noninteractive" ]]; then
 
-    # ── Step 1: AI asks clarifying questions with recommendations ──
-    _q_prompt="You are a senior tech lead interviewing a client to understand their project.
-Your goal: ask the RIGHT questions to fully understand what they want to build, so you can recommend the perfect engineering team.
+    # Conversational loop: AI asks ONE question at a time, adapts to answers
+    _conv_prompt="You are a senior tech lead having a conversation with a client.
+Your goal: understand their project through dialogue, then recommend the perfect engineering team.
 
-Ask as many questions as needed. Cover what matters for THIS specific project:
-- Platform & deployment (iOS native? web? desktop? API server? CLI tool?)
-- Core technology & language preferences
-- Architecture (monolith? microservices? serverless? on-device?)
-- Backend & data (needs a server? database? real-time? offline-first?)
-- Scale & users (personal tool? startup MVP? enterprise?)
-- Existing codebase or starting fresh?
-- Any specific frameworks or libraries they want to use?
+You will receive the project description and all previous Q&A.
+
+If you need more information, ask ONE question:
+- Write a natural flowing sentence that includes your recommendation
+- End with your recommended answer in [brackets] so the user can press Enter to accept
+- Format: Q: question sentence [recommended answer]
+- Ask in ${_lang_hint}
+
+If you have enough information, output your team recommendation:
+- Format: PERSONA=name (one per line, nothing else)
+- Available: dhh (Rails/Ruby), chris-lattner (Swift/iOS), dan-abramov (React/Frontend), guillermo-rauch (Next.js/Vercel), ryan-dahl (Node/Deno/Bun), rob-pike (Go), guido-van-rossum (Python)
+- Pick 1-3 MAX — only the best matches for explicitly stated technologies
+- Always include kent-beck last for QA
 
 Rules:
-- Skip questions that are obvious from the description. Only ask what is genuinely unclear.
-- Each question is ONE natural flowing sentence that includes your recommendation.
-- End each question with your recommended answer in [brackets].
-- The user can press Enter to accept, or type their own answer.
-- Ask in ${_lang_hint}.
+- Ask ONE question per turn. Wait for the answer before asking the next.
+- Each question should build on previous answers.
+- Skip what is already obvious from the description.
+- Output ONLY the Q: line OR PERSONA= lines per turn, nothing else."
 
-Output format (nothing else):
-Q1: natural question sentence [recommended answer]
-Q2: natural question sentence [recommended answer]
-..."
+    _context="Project: ${DESCRIPTION}"
+    _qnum=0
+    _max_rounds=7
 
-    _q_file=$(mktemp)
-    _q_ok=false
-    _spin_start "$L_AI_ANALYZING"
-    if claude -p --output-format text \
-      --append-system-prompt "$_q_prompt" \
-      "Project: ${DESCRIPTION}" > "$_q_file" 2>/dev/null; then
-      grep -q '^Q[0-9]' "$_q_file" && _q_ok=true
-    fi
-    _spin_stop
+    while [[ $_qnum -lt $_max_rounds ]]; do
+      _resp_file=$(mktemp)
+      if [[ $_qnum -eq 0 ]]; then
+        _spin_start "$L_AI_ANALYZING"
+      else
+        _spin_start "$L_AI_THINKING"
+      fi
 
-    _answers=""
-    if [[ "$_q_ok" == "true" ]]; then
-      printf "\n  ${_B}${L_AI_QUESTIONS}${_R}\n\n"
-      _qnum=0
+      claude -p --output-format text \
+        --append-system-prompt "$_conv_prompt" \
+        "$_context" > "$_resp_file" 2>/dev/null || true
+      _spin_stop
+
+      # Check if AI returned final recommendation (PERSONA=)
+      if grep -q '^PERSONA=' "$_resp_file"; then
+        while IFS='=' read -r key val; do
+          [[ "$key" == "PERSONA" && -n "$val" ]] && ai_personas+=("$val")
+        done < "$_resp_file"
+        [[ ${#ai_personas[@]} -gt 0 ]] && USE_AI=true
+        rm -f "$_resp_file"
+        break
+      fi
+
+      # Extract question (Q: line)
+      _q_line=""
       while IFS= read -r line; do
         case "$line" in
-          Q[0-9]*)
-            _q_text="${line#Q[0-9]*: }"
-            _qnum=$((_qnum + 1))
-
-            # Extract [recommendation] from end of question
-            _q_default=""
-            _q_display="$_q_text"
-            if [[ "$_q_text" =~ \[([^]]+)\][[:space:]]*$ ]]; then
-              _q_default="${BASH_REMATCH[1]}"
-              # Strip [recommendation] from display text
-              _q_display="${_q_text%%[*}"
-              _q_display="${_q_display% }"
-            fi
-
-            printf "  ${_CYN}%d)${_R} %s\n" "$_qnum" "$_q_display"
-            if [[ -n "$_q_default" ]]; then
-              read -e -r -p "     ${_s}${_GRY}${_e}[${_q_default}]${_s}${_R}${_e}: " _ans
-              _ans="${_ans:-$_q_default}"
-            else
-              read -e -r -p "     > " _ans
-            fi
-            [[ -n "$_ans" ]] && _answers="${_answers}Q: ${_q_display} A: ${_ans}\n"
-            printf "\n"
+          Q:*|Q[0-9]*)
+            _q_line="${line#Q: }"
+            _q_line="${_q_line#Q[0-9]*: }"
+            break
             ;;
         esac
-      done < "$_q_file"
-    fi
-    rm -f "$_q_file"
+      done < "$_resp_file"
+      rm -f "$_resp_file"
 
-    # ── Step 2: AI suggests personas with full context ──
-    _ai_prompt='You suggest team members for a software project.
-Based on the description AND the user'\''s answers, pick the best-matching personas.
-Output ONLY lines in this exact format (no quotes, no comments, no blank lines):
-PERSONA=name
-Where name is one of: dhh, chris-lattner, dan-abramov, guillermo-rauch, ryan-dahl, rob-pike, guido-van-rossum
-Rules:
-- Pick 1-3 personas MAX. Only the BEST matches for explicitly stated technologies.
-- Do NOT guess — if a technology is not mentioned or clearly implied, skip that persona.
-- Always include kent-beck last for QA.
-Output NOTHING else.'
+      # No question found — AI is confused, break
+      [[ -z "$_q_line" ]] && break
 
-    _context="Description: ${DESCRIPTION}"
-    [[ -n "$_answers" ]] && _context="${_context}
+      _qnum=$((_qnum + 1))
 
-Clarifications:
-$(printf '%b' "$_answers")"
+      # Extract [recommendation] from end
+      _q_default=""
+      _q_display="$_q_line"
+      if [[ "$_q_line" =~ \[([^]]+)\][[:space:]]*$ ]]; then
+        _q_default="${BASH_REMATCH[1]}"
+        _q_display="${_q_line%%\[*}"
+        _q_display="${_q_display% }"
+      fi
 
-    _ai_file=$(mktemp)
-    _spin_start "$L_AI_COMPOSING"
-    if claude -p --output-format text \
-      --append-system-prompt "$_ai_prompt" \
-      "$_context" > "$_ai_file" 2>/dev/null; then
-      while IFS='=' read -r key val; do
-        [[ "$key" == "PERSONA" && -n "$val" ]] && ai_personas+=("$val")
-      done < "$_ai_file"
-      [[ ${#ai_personas[@]} -gt 0 ]] && USE_AI=true
-    fi
-    _spin_stop
-    rm -f "$_ai_file"
+      printf "\n  ${_CYN}%d)${_R} %s\n" "$_qnum" "$_q_display"
+      if [[ -n "$_q_default" ]]; then
+        read -e -r -p "     ${_s}${_GRY}${_e}[${_q_default}]${_s}${_R}${_e}: " _ans
+        _ans="${_ans:-$_q_default}"
+      else
+        read -e -r -p "     > " _ans
+      fi
+
+      # Append Q&A to context for next round
+      _context="${_context}
+AI: ${_q_display}
+User: ${_ans}"
+    done
 
     if [[ "$USE_AI" == "true" ]]; then
+      printf "\n"
       info "$L_AI_DONE"
     else
       warn "$L_AI_FALLBACK"
