@@ -224,7 +224,7 @@ PROJ_SETTINGS="$PROJECT_PATH/.claude/settings.json"
 
 if [[ -d "$HOOKS_SRC" ]] && ls "$HOOKS_SRC"/*.sh &>/dev/null; then
   mkdir -p "$HOOKS_DST"
-  cp "$HOOKS_SRC"/task-completed.sh "$HOOKS_SRC"/teammate-idle.sh "$HOOKS_DST/" 2>/dev/null || true
+  cp "$HOOKS_SRC"/task-completed.sh "$HOOKS_SRC"/teammate-idle.sh "$HOOKS_SRC"/guard-hooks.sh "$HOOKS_DST/" 2>/dev/null || true
   chmod +x "$HOOKS_DST"/*.sh
 
   _PROJ_SETTINGS="$PROJ_SETTINGS" _HOOKS_DST="$HOOKS_DST" python3 << 'PYEOF'
@@ -232,16 +232,30 @@ import json, os
 s = os.environ["_PROJ_SETTINGS"]
 h = os.environ["_HOOKS_DST"]
 d = json.load(open(s)) if os.path.exists(s) else {}
+
+# TaskCompleted, TeammateIdle hooks
 for name, event in {"task-completed.sh":"TaskCompleted","teammate-idle.sh":"TeammateIdle"}.items():
     path = os.path.join(h, name)
     if not os.path.exists(path): continue
     d.setdefault("hooks",{}).setdefault(event,[])
     if not any(e.get("command")==path for e in d["hooks"][event]):
         d["hooks"][event].append({"command": path})
+
+# PreToolUse guard — blocks unauthorized edits to protected hooks
+guard = os.path.join(h, "guard-hooks.sh")
+if os.path.exists(guard):
+    d.setdefault("hooks",{}).setdefault("PreToolUse",[])
+    if not any(e.get("command")==guard for e in d["hooks"]["PreToolUse"]):
+        d["hooks"]["PreToolUse"].append({"matcher": "Edit|Write", "command": guard})
+
 os.makedirs(os.path.dirname(s), exist_ok=True)
 with open(s,"w") as f: json.dump(d, f, indent=2); f.write("\n")
 PYEOF
   info "Hooks (타입 체크 + 테스트 + 파일 크기 강제)"
+
+  # Lock core enforcement hooks — read-only (chmod 444)
+  chmod 444 "$HOOKS_DST"/task-completed.sh "$HOOKS_DST"/teammate-idle.sh "$HOOKS_DST"/guard-hooks.sh
+  info "핵심 Hook 파일 보호 (read-only)"
 fi
 
 # External agents (auto-activate all detected)
@@ -374,6 +388,19 @@ When dev teammates finish:
 ### Git
 - NEVER use \`git add -A\` or \`git add .\` — always stage specific files
 - One logical change per commit
+
+### Protected Files (DO NOT MODIFY)
+The following files enforce code quality and MUST NOT be modified without explicit user approval:
+- \`.claude/hooks/task-completed.sh\` — Type check + test + file size enforcement
+- \`.claude/hooks/teammate-idle.sh\` — Output format enforcement
+- \`.claude/hooks/guard-hooks.sh\` — This protection mechanism
+
+These files are read-only (chmod 444) and guarded by a PreToolUse hook.
+If modification is genuinely needed:
+1. Explain WHY to the user and get explicit approval
+2. Run: \`chmod 644 <file>\` then \`touch /tmp/.ai-team-hook-edit-approved\`
+3. Make the edit (one-time pass, token auto-consumed)
+4. Run: \`chmod 444 <file>\` to re-lock
 
 ### Code Style
 - No function exceeds ~30 lines
