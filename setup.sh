@@ -206,7 +206,9 @@ if [[ ${#personas[@]} -gt 0 ]]; then
     IFS=',' read -ra picks <<< "$selection"
     names=()
     for pick in "${picks[@]}"; do
-      idx=$(( $(echo "$pick" | tr -d ' ') - 1 ))
+      pick_num=$(echo "$pick" | tr -d ' ')
+      [[ "$pick_num" =~ ^[0-9]+$ ]] || continue
+      idx=$(( pick_num - 1 ))
       if [[ $idx -ge 0 && $idx -lt ${#personas[@]} ]]; then
         cp "${personas[$idx]}" "$PROJ_PERSONAS/"
         _name="$(basename "${personas[$idx]}" .md)"
