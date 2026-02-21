@@ -209,8 +209,9 @@ if [[ ${#personas[@]} -gt 0 ]]; then
       idx=$(( $(echo "$pick" | tr -d ' ') - 1 ))
       if [[ $idx -ge 0 && $idx -lt ${#personas[@]} ]]; then
         cp "${personas[$idx]}" "$PROJ_PERSONAS/"
-        names+=("$(basename "${personas[$idx]}" .md)")
-        info "${names[-1]} 복사"
+        _name="$(basename "${personas[$idx]}" .md)"
+        names+=("$_name")
+        info "$_name 복사"
       fi
     done
     [[ ${#names[@]} -gt 0 ]] && SUMMARY+=("페르소나: ${names[*]}")
