@@ -27,6 +27,18 @@ For each changed file:
    - Type mismatches: GraphQL schema vs DB columns, frontend vs backend contracts
    - Security: injection, XSS, auth bypass, exposed secrets
    - Naming: does the code say what it does? misleading names?
+   - **Comprehensibility**:
+     - File size: any changed file exceed ~300 lines?
+     - Function length: any function/method exceed ~30 lines?
+     - Magic numbers/strings: unnamed constants?
+     - Error messages: do they include enough context to debug?
+     - Types/interfaces: are contracts clear and well-defined?
+     - Architectural decisions: should any change be documented in an ADR?
+   - **Decision quality** (from dev's `## Decisions` section):
+     - Does each decision explain WHY, not just WHAT?
+     - Are alternatives mentioned? If not, was the choice truly obvious?
+     - Would a new teammate reading this understand the reasoning without asking anyone?
+     - If a decision is missing or vague, flag it as a finding
 3. Write down EVERY finding with file:line reference
 
 DO NOT just say "no issues found". That is LAZY.
@@ -52,6 +64,17 @@ Your response MUST end with this EXACT format:
 
 Files reviewed: [list every file you read]
 Lines of code reviewed: [approximate total]
+
+### Comprehensibility
+- Large files (>300 lines): [list or "none"]
+- Long functions (>30 lines): [list or "none"]
+- Magic values: [list or "none"]
+- ADR needed: [yes/no — if yes, what decision?]
+
+### Decision Quality
+- Decisions documented: [count]
+- Decisions with clear WHY: [count]
+- Missing/vague decisions: [list or "none"]
 
 ### Test Results
 - [test suite]: X passed, Y failed

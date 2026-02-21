@@ -94,7 +94,8 @@ A good persona prompt includes:
 1. **Philosophy** — What principles guide this agent's coding decisions?
 2. **Anti-patterns** — What should this agent never do?
 3. **Verification** — What commands must run before declaring "done"?
-4. **Output format** — Structured reporting (Changes Made, Tests, QA Report)
+4. **Comprehensibility** — Size limits, naming, error handling checklist
+5. **Output format** — Structured reporting (Changes Made, Decisions, Tests, QA Report)
 
 ## External Agents
 
@@ -146,15 +147,17 @@ The dispatcher (`hooks/run-external-agents.sh`) auto-discovers all agents in `ex
 ### `task-completed.sh`
 
 Runs when a dev teammate completes a task:
-1. **Tests** — Auto-detects framework and runs tests (rspec, npm test, xcodebuild)
-2. **External agents** — Dispatches to all `task-completed` external agents (non-blocking)
+1. **Type check** — Auto-detects language (tsc, mypy/pyright, go vet) — blocks on failure
+2. **Tests** — Auto-detects framework and runs tests (rspec, npm test, xcodebuild) — blocks on failure
+3. **File size check** — Warns about changed files exceeding 300 lines (configurable via `FILE_SIZE_THRESHOLD`)
+4. **External agents** — Dispatches to all `task-completed` external agents (non-blocking)
 
-QA teammates are excluded. Exits with code 2 on test failure.
+QA teammates are excluded. Exits with code 2 on type check or test failure.
 
 ### `teammate-idle.sh`
 
 Validates output format before a teammate goes idle:
-- **Dev teammates**: Must include `## Changes Made` and `## Tests`
+- **Dev teammates**: Must include `## Changes Made`, `## Decisions`, and `## Tests` — blocks if any section is missing or too thin
 - **QA teammates**: Must include `## QA Report` and a `PASS`/`FAIL` verdict
 
 ### `run-external-agents.sh`
@@ -192,6 +195,9 @@ Copy the relevant sections into your project's `CLAUDE.md` file.
 ## Changes Made
 - [file path]: [what changed and why]
 
+## Decisions
+- [decision]: [why this approach over alternatives]
+
 ## Tests
 - [PASS/FAIL]: [test command you ran] — [result summary]
 ```
@@ -208,6 +214,12 @@ Copy the relevant sections into your project's `CLAUDE.md` file.
 Files reviewed: [list]
 Lines of code reviewed: [count]
 
+### Comprehensibility
+- Large files (>300 lines): [list or "none"]
+- Long functions (>30 lines): [list or "none"]
+- Magic values: [list or "none"]
+- ADR needed: [yes/no]
+
 ### Test Results
 - [suite]: X passed, Y failed
 
@@ -219,6 +231,25 @@ PASS — [reason] / FAIL — [items to fix]
 - Follow existing project conventions
 - No unnecessary refactoring — change only what the task requires
 - Delete dead code; don't comment it out
+
+#### Code Comprehensibility
+- No function/method exceeds ~30 lines
+- No magic numbers or strings — use named constants
+- Names are self-documenting (no abbreviations unless universally understood)
+- Errors include context (not silently swallowed)
+- No file exceeds ~300 lines — split into focused modules
+- Types/interfaces define all domain boundaries
+
+#### Architecture Decision Records
+- When you make a non-obvious architectural choice, create an ADR in `docs/adr/`
+- Use the template: `templates/adr-template.md`
+- ADR is needed when: choosing between libraries, changing data flow, introducing a new pattern, or removing an existing approach
+- Keep ADRs short — context, decision, consequences
+
+#### Commit Messages
+- Explain WHY, not just WHAT changed
+- Bad: "Update user.ts" / Good: "사용자 세션 만료 시 자동 로그아웃 추가 — 보안 감사 지적 반영"
+- One logical change per commit
 
 </details>
 
@@ -314,6 +345,11 @@ When dev teammates finish:
 3. NEVER use `git add -A` or `git add .` — always list specific files
 4. Deploy if configured
 
+#### Step 7: Commit Message Quality
+- Write commit messages that explain WHY, not just WHAT
+- Include the task context: what problem was solved, what decision was made
+- If an architectural decision was made, ensure an ADR exists or add the reasoning to the commit body
+
 ### Key Principle
 
 You are a tech lead, not a dispatcher and not a developer.
@@ -336,6 +372,9 @@ User describes task
        │
        ▼
   Dev teammates implement  ◄──────────────┐
+       │                                   │
+       ▼                                   │
+  hook: type check (tsc/mypy/go vet)       │
        │                                   │
        ▼                                   │
   hook: tests run automatically            │
