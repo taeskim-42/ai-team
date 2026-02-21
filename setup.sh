@@ -499,12 +499,26 @@ if [[ "$MODE" != "config" ]]; then
   if command -v claude &>/dev/null && [[ "$MODE" != "noninteractive" ]]; then
 
     # ── Step 1: AI asks clarifying questions ──
-    _q_prompt="You analyze a software project and ask 2-3 SHORT clarifying questions to determine the exact tech stack.
-Focus on: platform (iOS/Android/web/CLI), language/framework, backend needs, architecture.
-Ask in ${_lang_hint}. Output ONLY in this format (nothing else):
+    _q_prompt="You are a senior tech lead interviewing a client to understand their project.
+Your goal: ask the RIGHT questions to fully understand what they want to build, so you can recommend the perfect engineering team.
+
+Ask as many questions as needed. Cover what matters for THIS specific project:
+- Platform & deployment (iOS native? web? desktop? API server? CLI tool?)
+- Core technology & language preferences
+- Architecture (monolith? microservices? serverless? on-device?)
+- Backend & data (needs a server? database? real-time? offline-first?)
+- Scale & users (personal tool? startup MVP? enterprise?)
+- Existing codebase or starting fresh?
+- Any specific frameworks or libraries they want to use?
+
+Skip questions that are obvious from the description. Only ask what is genuinely unclear.
+Keep each question SHORT and conversational — one line each.
+Ask in ${_lang_hint}.
+
+Output format (nothing else):
 Q1: question
 Q2: question
-Q3: question"
+..."
 
     _q_file=$(mktemp)
     _q_ok=false
