@@ -111,7 +111,15 @@ header "4. 외부 에이전트"
 EXT_DIR="$SCRIPT_DIR/external-agents"
 EXAMPLES_DIR="$EXT_DIR/examples"
 
-declare -A CLI_MAP=([gemini]="gemini-reviewer" [codex]="codex-coder" [openai]="gpt-security")
+# Map CLI name → agent directory (bash 3.2 compatible, no associative arrays)
+cli_to_agent() {
+  case "$1" in
+    gemini) echo "gemini-reviewer" ;;
+    codex)  echo "codex-coder" ;;
+    openai) echo "gpt-security" ;;
+    *)      echo "" ;;
+  esac
+}
 detected=()
 for cli in gemini codex openai ollama; do
   command -v "$cli" &>/dev/null && { detected+=("$cli"); info "$cli CLI 감지됨"; }
@@ -121,7 +129,7 @@ if [[ ${#detected[@]} -eq 0 ]]; then
   warn "외부 LLM CLI 감지 안됨 (gemini, codex, openai, ollama)"
 else
   for cli in "${detected[@]}"; do
-    example="${CLI_MAP[$cli]:-}"
+    example="$(cli_to_agent "$cli")"
     if [[ -n "$example" && -d "$EXAMPLES_DIR/$example" ]]; then
       [[ -d "$EXT_DIR/$example" ]] && { skip "$example 이미 활성화됨"; continue; }
       read -e -r -p "  $cli → $example 활성화? (Y/n): " yn
