@@ -47,7 +47,9 @@ _lang_en() {
   L_DESC_HINT="e.g. Rails 8 backend + Swift iOS app. Fitness tracking service."
   L_DESC_REQUIRED="Project description is required"
   L_PATH="Project path"
-  L_AI_SPIN="Generating AI team suggestion"
+  L_AI_ANALYZING="AI is analyzing your project"
+  L_AI_QUESTIONS="AI has a few questions:"
+  L_AI_COMPOSING="Composing team"
   L_AI_DONE="AI suggestion ready"
   L_AI_FALLBACK="Switching to keyword matching"
   L_TEAM_TITLE="Team"
@@ -94,7 +96,9 @@ _lang_ko() {
   L_DESC_HINT="예: Rails 8 백엔드 + Swift iOS 앱. 운동 추적 서비스."
   L_DESC_REQUIRED="프로젝트 설명을 입력해주세요"
   L_PATH="프로젝트 경로"
-  L_AI_SPIN="AI 팀 제안 생성 중"
+  L_AI_ANALYZING="AI가 프로젝트를 분석 중"
+  L_AI_QUESTIONS="AI가 몇 가지를 물어봅니다:"
+  L_AI_COMPOSING="팀 구성 중"
   L_AI_DONE="AI 제안 완료"
   L_AI_FALLBACK="키워드 매칭으로 전환"
   L_TEAM_TITLE="팀 구성"
@@ -488,25 +492,72 @@ if [[ "$MODE" != "config" ]]; then
   USE_AI=false
   ai_personas=()
 
-  # Try AI generation (skip in non-interactive for speed)
+  _lang_hint="Korean"
+  [[ "$LANG_CODE" == "en" ]] && _lang_hint="English"
+
+  # Try AI conversation (skip in non-interactive for speed)
   if command -v claude &>/dev/null && [[ "$MODE" != "noninteractive" ]]; then
+
+    # ── Step 1: AI asks clarifying questions ──
+    _q_prompt="You analyze a software project and ask 2-3 SHORT clarifying questions to determine the exact tech stack.
+Focus on: platform (iOS/Android/web/CLI), language/framework, backend needs, architecture.
+Ask in ${_lang_hint}. Output ONLY in this format (nothing else):
+Q1: question
+Q2: question
+Q3: question"
+
+    _q_file=$(mktemp)
+    _q_ok=false
+    _spin_start "$L_AI_ANALYZING"
+    if claude -p --output-format text \
+      --append-system-prompt "$_q_prompt" \
+      "Project: ${DESCRIPTION}" > "$_q_file" 2>/dev/null; then
+      grep -q '^Q[0-9]' "$_q_file" && _q_ok=true
+    fi
+    _spin_stop
+
+    _answers=""
+    if [[ "$_q_ok" == "true" ]]; then
+      printf "\n  ${_B}${L_AI_QUESTIONS}${_R}\n\n"
+      _qnum=0
+      while IFS= read -r line; do
+        case "$line" in
+          Q[0-9]*)
+            _q_text="${line#Q[0-9]*: }"
+            _qnum=$((_qnum + 1))
+            printf "  ${_CYN}%d)${_R} %s\n" "$_qnum" "$_q_text"
+            read -e -r -p "     > " _ans
+            [[ -n "$_ans" ]] && _answers="${_answers}Q: ${_q_text} A: ${_ans}\n"
+            printf "\n"
+            ;;
+        esac
+      done < "$_q_file"
+    fi
+    rm -f "$_q_file"
+
+    # ── Step 2: AI suggests personas with full context ──
     _ai_prompt='You suggest team members for a software project.
+Based on the description AND the user'\''s answers, pick the best-matching personas.
 Output ONLY lines in this exact format (no quotes, no comments, no blank lines):
 PERSONA=name
 Where name is one of: dhh, chris-lattner, dan-abramov, guillermo-rauch, ryan-dahl, rob-pike, guido-van-rossum
 Rules:
-- Pick 1-3 personas MAX. Be selective — only the BEST matches for the CORE tech stack.
-- A native iOS app does NOT need React or Node personas.
-- A web app does NOT need Swift personas.
+- Pick 1-3 personas MAX. Only the BEST matches for explicitly stated technologies.
 - Do NOT guess — if a technology is not mentioned or clearly implied, skip that persona.
 - Always include kent-beck last for QA.
 Output NOTHING else.'
 
+    _context="Description: ${DESCRIPTION}"
+    [[ -n "$_answers" ]] && _context="${_context}
+
+Clarifications:
+$(printf '%b' "$_answers")"
+
     _ai_file=$(mktemp)
-    _spin_start "$L_AI_SPIN"
+    _spin_start "$L_AI_COMPOSING"
     if claude -p --output-format text \
       --append-system-prompt "$_ai_prompt" \
-      "Suggest team for: ${DESCRIPTION}" > "$_ai_file" 2>/dev/null; then
+      "$_context" > "$_ai_file" 2>/dev/null; then
       while IFS='=' read -r key val; do
         [[ "$key" == "PERSONA" && -n "$val" ]] && ai_personas+=("$val")
       done < "$_ai_file"
