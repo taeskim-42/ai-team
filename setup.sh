@@ -498,7 +498,7 @@ if [[ "$MODE" != "config" ]]; then
   # Try AI conversation (skip in non-interactive for speed)
   if command -v claude &>/dev/null && [[ "$MODE" != "noninteractive" ]]; then
 
-    # ── Step 1: AI asks clarifying questions ──
+    # ── Step 1: AI asks clarifying questions with recommendations ──
     _q_prompt="You are a senior tech lead interviewing a client to understand their project.
 Your goal: ask the RIGHT questions to fully understand what they want to build, so you can recommend the perfect engineering team.
 
@@ -511,13 +511,16 @@ Ask as many questions as needed. Cover what matters for THIS specific project:
 - Existing codebase or starting fresh?
 - Any specific frameworks or libraries they want to use?
 
-Skip questions that are obvious from the description. Only ask what is genuinely unclear.
-Keep each question SHORT and conversational — one line each.
-Ask in ${_lang_hint}.
+Rules:
+- Skip questions that are obvious from the description. Only ask what is genuinely unclear.
+- Each question is ONE natural flowing sentence that includes your recommendation.
+- End each question with your recommended answer in [brackets].
+- The user can press Enter to accept, or type their own answer.
+- Ask in ${_lang_hint}.
 
 Output format (nothing else):
-Q1: question
-Q2: question
+Q1: natural question sentence [recommended answer]
+Q2: natural question sentence [recommended answer]
 ..."
 
     _q_file=$(mktemp)
@@ -539,9 +542,25 @@ Q2: question
           Q[0-9]*)
             _q_text="${line#Q[0-9]*: }"
             _qnum=$((_qnum + 1))
-            printf "  ${_CYN}%d)${_R} %s\n" "$_qnum" "$_q_text"
-            read -e -r -p "     > " _ans
-            [[ -n "$_ans" ]] && _answers="${_answers}Q: ${_q_text} A: ${_ans}\n"
+
+            # Extract [recommendation] from end of question
+            _q_default=""
+            _q_display="$_q_text"
+            if [[ "$_q_text" =~ \[([^]]+)\][[:space:]]*$ ]]; then
+              _q_default="${BASH_REMATCH[1]}"
+              # Strip [recommendation] from display text
+              _q_display="${_q_text%%[*}"
+              _q_display="${_q_display% }"
+            fi
+
+            printf "  ${_CYN}%d)${_R} %s\n" "$_qnum" "$_q_display"
+            if [[ -n "$_q_default" ]]; then
+              read -e -r -p "     ${_s}${_GRY}${_e}[${_q_default}]${_s}${_R}${_e}: " _ans
+              _ans="${_ans:-$_q_default}"
+            else
+              read -e -r -p "     > " _ans
+            fi
+            [[ -n "$_ans" ]] && _answers="${_answers}Q: ${_q_display} A: ${_ans}\n"
             printf "\n"
             ;;
         esac
