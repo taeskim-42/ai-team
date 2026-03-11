@@ -784,7 +784,7 @@ PROJ_SETTINGS="$PROJECT_PATH/.claude/settings.json"
 
 if [[ -d "$HOOKS_SRC" ]] && ls "$HOOKS_SRC"/*.sh &>/dev/null; then
   mkdir -p "$HOOKS_DST"
-  cp "$HOOKS_SRC"/task-completed.sh "$HOOKS_SRC"/teammate-idle.sh "$HOOKS_SRC"/guard-hooks.sh "$HOOKS_DST/" 2>/dev/null || true
+  cp "$HOOKS_SRC"/task-completed.sh "$HOOKS_SRC"/teammate-idle.sh "$HOOKS_SRC"/guard-hooks.sh "$HOOKS_SRC"/update-architecture.sh "$HOOKS_SRC"/scan-architecture.py "$HOOKS_DST/" 2>/dev/null || true
   chmod +x "$HOOKS_DST"/*.sh
 
   _PROJ_SETTINGS="$PROJ_SETTINGS" _HOOKS_DST="$HOOKS_DST" python3 << 'PYEOF'
@@ -866,10 +866,11 @@ $(printf '%b' "$persona_spawn")
 ## Process (follow this EXACTLY)
 
 ### Step 1: Quick Context (30 seconds max)
-When user describes a task, read 2-3 KEY source files to understand current state.
+1. Read \`ARCHITECTURE.md\` FIRST — this is your codebase map (auto-updated by hooks)
+2. Based on the map, read 2-3 KEY source files to understand current state
 - Use Read tool only (max 50 lines each with offset/limit)
 - Focus on: the file(s) most likely to change, related tests if they exist
-- Do NOT explore broadly — you're confirming structure, not analyzing
+- Do NOT explore broadly — the map tells you where everything is
 
 ### Step 2: Write DETAILED Tasks
 Each task MUST include:
@@ -949,6 +950,13 @@ Adapt folder naming to language conventions (e.g. \`src/domain/\`, \`lib/2_domai
 MDEOF
 
 info "$L_CLAUDEMD_DONE"
+
+# Generate initial ARCHITECTURE.md
+_arch_update="$HOOKS_DST/update-architecture.sh"
+if [ -f "$_arch_update" ] && [ -x "$_arch_update" ]; then
+  bash "$_arch_update" "$PROJECT_PATH" 2>/dev/null && \
+    info "ARCHITECTURE.md generated" || true
+fi
 
 # ══════════════════════════════════════════════════════════════
 # Done

@@ -215,4 +215,11 @@ size_output=$(check_file_sizes "$test_dir" 2>&1) || {
   echo "Small files are how the next agent understands the system without your context." >&2
   exit 2
 }
+
+# Phase 4: Update ARCHITECTURE.md (non-blocking, best-effort)
+# Gas Town approach: give agents a persistent map instead of making them explore.
+_arch_script="$SCRIPT_DIR/update-architecture.sh"
+if [ -f "$_arch_script" ] && [ -x "$_arch_script" ]; then
+  bash "$_arch_script" "$test_dir" 2>/dev/null || true
+fi
 exit 0

@@ -152,31 +152,79 @@ if [ -z "$CONFIG" ]; then
 
     _thas() { printf '%s\n' "${_det[@]}" | grep -qw "$1"; }
 
-    # ── Match personas ──
-    _personas=()
-    _thas "rails"      && _personas+=("dhh")
-    _thas "swift"      && _personas+=("chris-lattner")
-    _thas "nextjs"     && _personas+=("guillermo-rauch") && _personas+=("dan-abramov")
-    _thas "nuxt"       && _personas+=("evan-you")
-    if ! _thas "nextjs" && ! _thas "nuxt"; then
-      { _thas "typescript" || _thas "node"; } && _personas+=("dan-abramov")
-    fi
-    _thas "go"         && _personas+=("rob-pike")
-    _thas "python"     && _personas+=("guido-van-rossum")
-    _thas "rust"       && _personas+=("graydon-hoare")
-    _thas "java"       && _personas+=("james-gosling")
-    _thas "php"        && _personas+=("taylor-otwell")
-    _thas "docker"     && _personas+=("kelsey-hightower")
-    _personas+=("kent-beck")
+    # ── Match rules to detected tech ──
+    _frontend_rules=""
+    _backend_rules=""
 
-    # Deduplicate
-    _uniq=()
-    for _p in "${_personas[@]}"; do
-      _dup=false
-      for _u in "${_uniq[@]:-}"; do [ "$_u" = "$_p" ] && { _dup=true; break; }; done
-      [ "$_dup" = "false" ] && _uniq+=("$_p")
-    done
-    _personas=("${_uniq[@]}")
+    _thas "swift"      && _frontend_rules="swift-ios"
+    _thas "nextjs"     && _frontend_rules="frontend-react,frontend-nextjs"
+    _thas "nuxt"       && _frontend_rules="frontend-vue"
+    if [ -z "$_frontend_rules" ]; then
+      { _thas "typescript" || _thas "node"; } && _frontend_rules="frontend-react"
+    fi
+
+    _thas "rails"      && _backend_rules="backend-rails"
+    _thas "go"         && _backend_rules="backend-go"
+    _thas "python"     && _backend_rules="backend-python"
+    _thas "rust"       && _backend_rules="backend-rust"
+    _thas "java"       && _backend_rules="backend-java"
+    _thas "php"        && _backend_rules="backend-php"
+
+    # Attach infra rules to backend (or frontend if no backend)
+    _thas "docker"     && {
+      if [ -n "$_backend_rules" ]; then _backend_rules="${_backend_rules},infra"
+      elif [ -n "$_frontend_rules" ]; then _frontend_rules="${_frontend_rules},infra"
+      else _backend_rules="infra"; fi
+    }
+
+    # Helper: rules CSV → tech label for display
+    _rules_to_tech() {
+      local _result="" _r _t
+      IFS=',' read -ra _parts <<< "$1"
+      for _r in "${_parts[@]}"; do
+        case "$_r" in
+          frontend-react)   _t="React" ;;
+          frontend-nextjs)  _t="Next.js" ;;
+          frontend-vue)     _t="Vue.js · Nuxt" ;;
+          swift-ios)        _t="Swift · iOS" ;;
+          backend-rails)    _t="Ruby · Rails" ;;
+          backend-go)       _t="Go" ;;
+          backend-python)   _t="Python" ;;
+          backend-rust)     _t="Rust" ;;
+          backend-java)     _t="Java · Spring" ;;
+          backend-php)      _t="PHP · Laravel" ;;
+          infra)            _t="Docker · Infra" ;;
+          *)                _t="" ;;
+        esac
+        [ -n "$_t" ] && _result="${_result:+$_result · }$_t"
+      done
+      echo "$_result"
+    }
+
+    # ── Build agent list (parallel arrays) ──
+    _agent_ids=(); _agent_personas=(); _agent_rules=(); _agent_techs=()
+    _has_both=false
+    [ -n "$_frontend_rules" ] && [ -n "$_backend_rules" ] && _has_both=true
+
+    if [ -n "$_frontend_rules" ]; then
+      if $_has_both; then _agent_ids+=("frontend-dev"); else _agent_ids+=("dev"); fi
+      _agent_personas+=("dev")
+      _agent_rules+=("$_frontend_rules")
+      _agent_techs+=("$(_rules_to_tech "$_frontend_rules")")
+    fi
+
+    if [ -n "$_backend_rules" ]; then
+      if $_has_both; then _agent_ids+=("backend-dev"); else _agent_ids+=("dev"); fi
+      _agent_personas+=("dev")
+      _agent_rules+=("$_backend_rules")
+      _agent_techs+=("$(_rules_to_tech "$_backend_rules")")
+    fi
+
+    # QA always last
+    _agent_ids+=("qa")
+    _agent_personas+=("Kent Beck")
+    _agent_rules+=("")
+    _agent_techs+=("Testing · Quality Assurance")
 
     # ── Build stack label ──
     _stk=()
@@ -193,27 +241,6 @@ if [ -z "$CONFIG" ]; then
     _thas "php"        && _stk+=("PHP/Laravel")
     _thas "docker"     && _stk+=("Docker")
     _STACK=$(printf '%s, ' "${_stk[@]}"); _STACK="${_STACK%, }"
-
-    # ── Persona metadata ──
-    _pmeta() {
-      case "$1" in
-        dhh)              echo "DHH|Creator of Rails|Ruby · Rails · Hotwire" ;;
-        chris-lattner)    echo "Chris Lattner|Creator of Swift|Swift · iOS · SwiftUI" ;;
-        dan-abramov)      echo "Dan Abramov|React Core Team|React · TypeScript · Frontend" ;;
-        guillermo-rauch)  echo "Guillermo Rauch|Creator of Next.js|Next.js · React · Vercel" ;;
-        evan-you)         echo "Evan You|Creator of Vue.js|Vue · Nuxt · Vite" ;;
-        ryan-dahl)        echo "Ryan Dahl|Creator of Node.js|Node · Deno · Runtime" ;;
-        rob-pike)         echo "Rob Pike|Creator of Go|Go · gRPC · Systems" ;;
-        guido-van-rossum) echo "Guido van Rossum|Creator of Python|Python · Django · FastAPI" ;;
-        graydon-hoare)    echo "Graydon Hoare|Creator of Rust|Rust · Systems · WebAssembly" ;;
-        james-gosling)    echo "James Gosling|Creator of Java|Java · Spring · Kotlin" ;;
-        taylor-otwell)    echo "Taylor Otwell|Creator of Laravel|PHP · Laravel · Livewire" ;;
-        linus-torvalds)   echo "Linus Torvalds|Creator of Linux|C · Linux · Systems" ;;
-        doug-cutting)     echo "Doug Cutting|Creator of Hadoop|SQL · Data · Search" ;;
-        kelsey-hightower) echo "Kelsey Hightower|K8s Advocate|Docker · K8s · Cloud" ;;
-        kent-beck)        echo "Kent Beck|TDD Pioneer|Testing · Quality Assurance" ;;
-      esac
-    }
 
     # ── Generate team.config.sh ──
     _proj_name="$(basename "$QUICK_SETUP_PATH")"
@@ -232,17 +259,14 @@ if [ -z "$CONFIG" ]; then
       printf 'REPO_1_PATH="%s"\n' "$QUICK_SETUP_PATH"
       printf 'REPO_1_LABEL="%s"\n' "$_proj_name"
       printf 'REPO_1_STACK="%s"\n\n' "$_STACK"
-      printf 'AGENT_COUNT=%d\n' "${#_personas[@]}"
-      _ai=1
-      for _p in "${_personas[@]}"; do
-        IFS='|' read -r _name _sub _tech <<< "$(_pmeta "$_p")"
-        [ "$_p" = "kent-beck" ] && _id="qa" || _id="${_p}-dev"
-        printf '\nAGENT_%d_ID="%s"\n' "$_ai" "$_id"
-        printf 'AGENT_%d_PERSONA="%s"\n' "$_ai" "$_name"
-        printf 'AGENT_%d_SUBTITLE="%s"\n' "$_ai" "$_sub"
-        printf 'AGENT_%d_TECH="%s"\n' "$_ai" "$_tech"
-        printf 'AGENT_%d_REPO=1\n' "$_ai"
-        _ai=$((_ai + 1))
+      printf 'AGENT_COUNT=%d\n' "${#_agent_ids[@]}"
+      for _ai in "${!_agent_ids[@]}"; do
+        _aidx=$((_ai + 1))
+        printf '\nAGENT_%d_ID="%s"\n' "$_aidx" "${_agent_ids[$_ai]}"
+        printf 'AGENT_%d_PERSONA="%s"\n' "$_aidx" "${_agent_personas[$_ai]}"
+        [ -n "${_agent_rules[$_ai]}" ] && printf 'AGENT_%d_RULES="%s"\n' "$_aidx" "${_agent_rules[$_ai]}"
+        printf 'AGENT_%d_TECH="%s"\n' "$_aidx" "${_agent_techs[$_ai]}"
+        printf 'AGENT_%d_REPO=1\n' "$_aidx"
       done
     } > "$_cfg_file"
 
@@ -256,9 +280,8 @@ if [ -z "$CONFIG" ]; then
     printf "\n"
     printf "  ${_B}Project${_R}  %s ${_GRY}(%s)${_R}\n" "$_proj_name" "$_STACK"
     printf "  ${_B}Team${_R}    "
-    for _p in "${_personas[@]}"; do
-      IFS='|' read -r _name _sub _ <<< "$(_pmeta "$_p")"
-      printf " ${_CYN}%s${_R}${_GRY}(%s)${_R}" "$_name" "$_sub"
+    for _ai in "${!_agent_ids[@]}"; do
+      printf " ${_CYN}@%s${_R}${_GRY}(%s)${_R}" "${_agent_ids[$_ai]}" "${_agent_techs[$_ai]}"
     done
     printf "\n  ${_B}Config${_R}   ${_GRY}%s${_R}\n" "$_cfg_file"
   fi
@@ -365,7 +388,7 @@ for _ri in $(seq 1 "$REPO_COUNT"); do
     _hooks_dst="$_rp/.claude/hooks"
     _proj_settings="$_rp/.claude/settings.json"
     mkdir -p "$_hooks_dst"
-    cp "$HOOKS_SRC"/task-completed.sh "$HOOKS_SRC"/teammate-idle.sh "$HOOKS_SRC"/guard-hooks.sh "$_hooks_dst/" 2>/dev/null || true
+    cp "$HOOKS_SRC"/task-completed.sh "$HOOKS_SRC"/teammate-idle.sh "$HOOKS_SRC"/guard-hooks.sh "$HOOKS_SRC"/update-architecture.sh "$HOOKS_SRC"/scan-architecture.py "$_hooks_dst/" 2>/dev/null || true
     chmod +x "$_hooks_dst"/*.sh
 
     _PROJ_SETTINGS="$_proj_settings" _HOOKS_DST="$_hooks_dst" python3 << 'PYEOF'
@@ -429,6 +452,11 @@ All code MUST follow Clean Architecture with Domain-Driven Design, regardless of
 - Each bounded context has its own domain/application/infrastructure
 - Generated files should be excluded from review
 
+## Navigation
+- Read \`ARCHITECTURE.md\` FIRST before exploring — it's your codebase map
+- Auto-updated by hooks after every task completion
+- If missing, run: \`python3 .claude/hooks/scan-architecture.py .\`
+
 ## Code Style
 - No function exceeds ~30 lines
 - No file exceeds ~300 lines — split into focused modules
@@ -438,6 +466,13 @@ All code MUST follow Clean Architecture with Domain-Driven Design, regardless of
 - Follow existing project conventions
 CLAUSEEOF
     printf "  ${_GRN}✓${_R} [repo $_ri] CLAUDE.md created\n"
+  fi
+
+  # Generate initial ARCHITECTURE.md
+  _arch_update="$_hooks_dst/update-architecture.sh"
+  if [ -f "$_arch_update" ] && [ -x "$_arch_update" ]; then
+    bash "$_arch_update" "$_rp" 2>/dev/null && \
+      printf "  ${_GRN}✓${_R} [repo $_ri] ARCHITECTURE.md generated\n" || true
   fi
 done
 
@@ -460,6 +495,31 @@ _resolve_persona() {
   return 1
 }
 
+# Helper: resolve and read rules files, return concatenated content
+_resolve_rules() {
+  local rules_csv="$1" project_path="$2"
+  local _content="" _rule _slug _found
+  IFS=',' read -ra _rule_list <<< "$rules_csv"
+  for _rule in "${_rule_list[@]}"; do
+    _found=""
+    # Check project-local first, then bundled
+    for _rdir in "$project_path/.claude/rules" "$SCRIPT_DIR/rules"; do
+      if [ -f "$_rdir/${_rule}.md" ]; then
+        _found="$_rdir/${_rule}.md"
+        break
+      fi
+    done
+    if [ -n "$_found" ]; then
+      _content="${_content}
+
+$(cat "$_found")"
+    else
+      printf "  ${_YEL}⚠${_R} Rule file not found: ${_rule}\n" >&2
+    fi
+  done
+  echo "$_content"
+}
+
 # Build team roster and persona blocks
 TEAM_ROSTER=""
 PERSONA_BLOCKS=""
@@ -469,6 +529,7 @@ PRIMARY_REPO_PATH="${REPO_1_PATH:-}"
 for i in $(seq 1 "$AGENT_COUNT"); do
   id_var="AGENT_${i}_ID";           id="${!id_var:-agent-$i}"
   persona_var="AGENT_${i}_PERSONA"; persona="${!persona_var:-Agent $i}"
+  rules_var="AGENT_${i}_RULES";     rules="${!rules_var:-}"
   subtitle_var="AGENT_${i}_SUBTITLE"; subtitle="${!subtitle_var:-}"
   tech_var="AGENT_${i}_TECH";       tech="${!tech_var:-}"
   repo_var="AGENT_${i}_REPO";       repo_idx="${!repo_var:-1}"
@@ -482,15 +543,24 @@ for i in $(seq 1 "$AGENT_COUNT"); do
   fi
 
   # Build roster line
-  TEAM_ROSTER="${TEAM_ROSTER}- @${id} (${persona}"
-  [ -n "$subtitle" ] && TEAM_ROSTER="${TEAM_ROSTER}, ${subtitle}"
-  TEAM_ROSTER="${TEAM_ROSTER}) — ${tech}\n"
+  TEAM_ROSTER="${TEAM_ROSTER}- @${id} (${persona}) — ${tech}\n"
 
-  # Resolve and read persona file
-  persona_md=$(_resolve_persona "$persona" "$repo_path") || {
-    printf "  ${_RED}✗${_R} $L_NO_PERSONA: ${persona}\n"; exit 1
-  }
-  persona_content=$(cat "$persona_md")
+  # Resolve persona content: dev + rules composition or legacy persona file
+  if [ -n "$rules" ]; then
+    # New system: compose dev.md + rule files
+    persona_md=$(_resolve_persona "$persona" "$repo_path") || {
+      printf "  ${_RED}✗${_R} $L_NO_PERSONA: ${persona}\n"; exit 1
+    }
+    rules_content=$(_resolve_rules "$rules" "$repo_path")
+    persona_content="$(cat "$persona_md")
+${rules_content}"
+  else
+    # Legacy: use persona file as-is (backward compatible)
+    persona_md=$(_resolve_persona "$persona" "$repo_path") || {
+      printf "  ${_RED}✗${_R} $L_NO_PERSONA: ${persona}\n"; exit 1
+    }
+    persona_content=$(cat "$persona_md")
+  fi
 
   # Build persona block
   PERSONA_BLOCKS="${PERSONA_BLOCKS}
@@ -555,10 +625,11 @@ $(printf '%b' "$REPO_LIST")
 ## Process (follow this EXACTLY)
 
 ### Step 1: Quick Context (30 seconds max)
-When user describes a task, read 2-3 KEY source files to understand current state.
+1. Read ARCHITECTURE.md FIRST — this is your codebase map (auto-updated by hooks)
+2. Based on the map, read 2-3 KEY source files to understand current state
 - Use Read tool only (max 50 lines each with offset/limit)
 - Focus on: the file(s) most likely to change, related tests if they exist
-- Do NOT explore broadly — you are confirming structure, not analyzing
+- Do NOT explore broadly — the map tells you where everything is
 
 ### Step 2: Write DETAILED Tasks
 Each task MUST include:
@@ -578,6 +649,31 @@ ${QA_STEP}
 - NEVER use git add -A or git add . — always stage specific files
 - One logical change per commit
 - Commit message: explain WHY, not just WHAT
+
+### Architecture (Clean Architecture + DDD)
+All code MUST follow Clean Architecture with Domain-Driven Design, regardless of project size or language:
+
+**Layer structure (dependency flows inward only):**
+- domain/ — Pure business logic. Entities, value objects, repository interfaces. ZERO external dependencies.
+- application/ — Use cases. Orchestrates domain objects. Depends only on domain.
+- infrastructure/ — Implements domain interfaces. DB, APIs, file system, external services.
+- presentation/ — UI or API endpoints. Depends on application layer.
+
+**Rules:**
+- Domain NEVER imports from infrastructure or presentation
+- Infrastructure implements domain interfaces (dependency inversion)
+- Each bounded context has its own domain/application/infrastructure
+- Generated files should be excluded from review
+
+Adapt folder naming to language conventions (e.g. src/domain/, lib/2_domain/, pkg/domain/), but the layering principle is non-negotiable.
+
+### Code Style
+- No function exceeds ~30 lines
+- No file exceeds ~300 lines — split into focused modules
+- No magic numbers or strings — use named constants
+- Names are self-documenting
+- Errors include context (not silently swallowed)
+- Follow existing project conventions
 
 ### Protected Files (DO NOT MODIFY)
 - .claude/hooks/task-completed.sh — Type check + test + file size enforcement
