@@ -160,6 +160,16 @@ Lines of code reviewed: [count]
 PASS — [reason] / FAIL — [items to fix]
 ```
 
+#### Architecture (Clean Architecture + DDD)
+All code follows Clean Architecture with Domain-Driven Design, regardless of project size or language:
+- `domain/` — Pure business logic. Entities, value objects, repository interfaces. Zero external dependencies.
+- `application/` — Use cases. Orchestrates domain objects. Depends only on domain.
+- `infrastructure/` — Implements domain interfaces. DB, APIs, file system, external services.
+- `presentation/` — UI or API endpoints. Depends on application layer.
+- Domain never imports from infrastructure or presentation (dependency inversion)
+- Each bounded context has its own domain/application/infrastructure
+- Generated files (`.freezed.dart`, `.g.dart`, compiled outputs) excluded from review
+
 #### Code Style
 - Follow existing project conventions
 - No unnecessary refactoring — change only what the task requires

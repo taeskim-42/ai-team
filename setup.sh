@@ -922,6 +922,23 @@ If modification is genuinely needed:
 3. Make the edit (one-time pass, token auto-consumed)
 4. Run: \`chmod 444 <file>\` to re-lock
 
+### Architecture (Clean Architecture + DDD)
+All code MUST follow Clean Architecture with Domain-Driven Design, regardless of project size or language:
+
+**Layer structure (dependency flows inward only):**
+- \`domain/\` — Pure business logic. Entities, value objects, repository interfaces. ZERO external dependencies (no frameworks, no DB, no HTTP).
+- \`application/\` — Use cases. Orchestrates domain objects. Depends only on domain.
+- \`infrastructure/\` — Implements domain interfaces. DB, APIs, file system, external services.
+- \`presentation/\` — UI or API endpoints. Depends on application layer.
+
+**Rules:**
+- Domain NEVER imports from infrastructure or presentation
+- Infrastructure implements domain interfaces (dependency inversion)
+- Each bounded context (feature/module) has its own domain/application/infrastructure
+- Generated files (\`.freezed.dart\`, \`.g.dart\`, compiled outputs, etc.) should be excluded from review
+
+Adapt folder naming to language conventions (e.g. \`src/domain/\`, \`lib/2_domain/\`, \`pkg/domain/\`), but the layering principle is non-negotiable.
+
 ### Code Style
 - No function exceeds ~30 lines
 - No file exceeds ~300 lines — split into focused modules

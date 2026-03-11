@@ -414,6 +414,21 @@ PYEOF
 - \`.claude/hooks/teammate-idle.sh\` — Output format enforcement
 - \`.claude/hooks/guard-hooks.sh\` — This protection mechanism
 
+## Architecture (Clean Architecture + DDD)
+All code MUST follow Clean Architecture with Domain-Driven Design, regardless of project size or language:
+
+**Layer structure (dependency flows inward only):**
+- \`domain/\` — Pure business logic. Entities, value objects, repository interfaces. ZERO external dependencies.
+- \`application/\` — Use cases. Orchestrates domain objects. Depends only on domain.
+- \`infrastructure/\` — Implements domain interfaces. DB, APIs, file system, external services.
+- \`presentation/\` — UI or API endpoints. Depends on application layer.
+
+**Rules:**
+- Domain NEVER imports from infrastructure or presentation
+- Infrastructure implements domain interfaces (dependency inversion)
+- Each bounded context has its own domain/application/infrastructure
+- Generated files should be excluded from review
+
 ## Code Style
 - No function exceeds ~30 lines
 - No file exceeds ~300 lines — split into focused modules
