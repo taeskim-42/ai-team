@@ -201,8 +201,36 @@ if [ -z "$CONFIG" ]; then
       echo "$_result"
     }
 
+    # Helper: rules CSV → author names for display
+    _rules_to_names() {
+      local _result="" _r _n _seen=""
+      IFS=',' read -ra _parts <<< "$1"
+      for _r in "${_parts[@]}"; do
+        case "$_r" in
+          frontend-react)   _n="Dan Abramov" ;;
+          frontend-nextjs)  _n="Guillermo Rauch" ;;
+          frontend-vue)     _n="Evan You" ;;
+          swift-ios)        _n="Chris Lattner" ;;
+          backend-rails)    _n="DHH" ;;
+          backend-go)       _n="Rob Pike" ;;
+          backend-python)   _n="Guido van Rossum" ;;
+          backend-rust)     _n="Graydon Hoare" ;;
+          backend-java)     _n="James Gosling" ;;
+          backend-php)      _n="Taylor Otwell" ;;
+          infra)            _n="Kelsey Hightower" ;;
+          *)                _n="" ;;
+        esac
+        # Deduplicate
+        if [ -n "$_n" ] && ! echo "$_seen" | grep -qF "$_n"; then
+          _result="${_result:+$_result · }$_n"
+          _seen="${_seen}${_n}|"
+        fi
+      done
+      echo "$_result"
+    }
+
     # ── Build agent list (parallel arrays) ──
-    _agent_ids=(); _agent_personas=(); _agent_rules=(); _agent_techs=()
+    _agent_ids=(); _agent_personas=(); _agent_rules=(); _agent_techs=(); _agent_labels=()
     _has_both=false
     [ -n "$_frontend_rules" ] && [ -n "$_backend_rules" ] && _has_both=true
 
@@ -211,6 +239,7 @@ if [ -z "$CONFIG" ]; then
       _agent_personas+=("dev")
       _agent_rules+=("$_frontend_rules")
       _agent_techs+=("$(_rules_to_tech "$_frontend_rules")")
+      _agent_labels+=("$(_rules_to_names "$_frontend_rules")")
     fi
 
     if [ -n "$_backend_rules" ]; then
@@ -218,6 +247,7 @@ if [ -z "$CONFIG" ]; then
       _agent_personas+=("dev")
       _agent_rules+=("$_backend_rules")
       _agent_techs+=("$(_rules_to_tech "$_backend_rules")")
+      _agent_labels+=("$(_rules_to_names "$_backend_rules")")
     fi
 
     # QA always last
@@ -225,6 +255,7 @@ if [ -z "$CONFIG" ]; then
     _agent_personas+=("Kent Beck")
     _agent_rules+=("")
     _agent_techs+=("Testing · Quality Assurance")
+    _agent_labels+=("Kent Beck")
 
     # ── Build stack label ──
     _stk=()
@@ -265,6 +296,7 @@ if [ -z "$CONFIG" ]; then
         printf '\nAGENT_%d_ID="%s"\n' "$_aidx" "${_agent_ids[$_ai]}"
         printf 'AGENT_%d_PERSONA="%s"\n' "$_aidx" "${_agent_personas[$_ai]}"
         [ -n "${_agent_rules[$_ai]}" ] && printf 'AGENT_%d_RULES="%s"\n' "$_aidx" "${_agent_rules[$_ai]}"
+        printf 'AGENT_%d_LABEL="%s"\n' "$_aidx" "${_agent_labels[$_ai]}"
         printf 'AGENT_%d_TECH="%s"\n' "$_aidx" "${_agent_techs[$_ai]}"
         printf 'AGENT_%d_REPO=1\n' "$_aidx"
       done
@@ -281,7 +313,7 @@ if [ -z "$CONFIG" ]; then
     printf "  ${_B}Project${_R}  %s ${_GRY}(%s)${_R}\n" "$_proj_name" "$_STACK"
     printf "  ${_B}Team${_R}    "
     for _ai in "${!_agent_ids[@]}"; do
-      printf " ${_CYN}@%s${_R}${_GRY}(%s)${_R}" "${_agent_ids[$_ai]}" "${_agent_techs[$_ai]}"
+      printf " ${_CYN}@%s${_R} ${_WHT}%s${_R} ${_GRY}(%s)${_R}" "${_agent_ids[$_ai]}" "${_agent_labels[$_ai]}" "${_agent_techs[$_ai]}"
     done
     printf "\n  ${_B}Config${_R}   ${_GRY}%s${_R}\n" "$_cfg_file"
   fi
@@ -694,10 +726,12 @@ You are a tech lead, not a dispatcher and not a developer.
 _agent_lines=""
 for _ai in $(seq 1 "$AGENT_COUNT"); do
   _aid_var="AGENT_${_ai}_ID"; _aid="${!_aid_var:-}"
+  _al_var="AGENT_${_ai}_LABEL"; _al="${!_al_var:-}"
   _ap_var="AGENT_${_ai}_PERSONA"; _ap="${!_ap_var:-}"
-  _as_var="AGENT_${_ai}_SUBTITLE"; _as="${!_as_var:-}"
   _at_var="AGENT_${_ai}_TECH"; _at="${!_at_var:-}"
-  _agent_lines="${_agent_lines}  ${_CYN}@${_aid}${_R}  ${_WHT}${_ap}${_R} ${_GRY}${_as}${_R}  ${_D}${_at}${_R}\n"
+  # Use LABEL if available, fall back to PERSONA
+  _display_name="${_al:-$_ap}"
+  _agent_lines="${_agent_lines}  ${_CYN}@${_aid}${_R}  ${_WHT}${_display_name}${_R}  ${_D}${_at}${_R}\n"
 done
 
 # Repo lines
