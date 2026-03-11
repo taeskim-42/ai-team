@@ -1,2 +1,6 @@
 .env
 .DS_Store
+.ai-team-lang
+.claude/
+projects/
+*.bak

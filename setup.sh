@@ -80,8 +80,6 @@ _lang_en() {
   L_AGENT_TEAMS_ON="Agent Teams enabled"
   L_AGENT_TEAMS_ALREADY="Agent Teams already enabled"
   L_GIT_INIT="git init"
-  L_EXT_AGENT="External agent:"
-  L_EXT_NONE="No external agents (CLI/API not detected)"
   L_NO_MATCH="No matching keywords — installing all personas"
 }
 
@@ -129,8 +127,6 @@ _lang_ko() {
   L_AGENT_TEAMS_ON="Agent Teams 활성화"
   L_AGENT_TEAMS_ALREADY="Agent Teams 이미 활성화됨"
   L_GIT_INIT="git init"
-  L_EXT_AGENT="외부 에이전트:"
-  L_EXT_NONE="외부 에이전트 없음 (CLI/API 미감지)"
   L_NO_MATCH="매칭된 기술 키워드 없음 — 전체 페르소나 설치"
 }
 
@@ -456,10 +452,42 @@ fi
 
 if [[ "$MODE" != "config" ]]; then
 
+  # ── Auto-detect tech stack from existing repo ──
+  _auto_desc=""
+  if [[ -n "$PROJECT_PATH" && -d "$PROJECT_PATH" ]]; then
+    _detected=()
+    # Check root and one level of subdirs (monorepo support)
+    _scan_dirs=("$PROJECT_PATH")
+    for _sd in "$PROJECT_PATH"/*/; do
+      [[ -d "$_sd" && "$(basename "$_sd")" != "node_modules" && "$(basename "$_sd")" != ".git" ]] && _scan_dirs+=("${_sd%/}")
+    done
+    _has() { for _d in "${_scan_dirs[@]}"; do [[ -f "$_d/$1" ]] && return 0; done; return 1; }
+    _has "Gemfile"          && _detected+=("Rails/Ruby")
+    _has "Package.swift"    && _detected+=("Swift")
+    (_has "next.config.js" || _has "next.config.ts" || _has "next.config.mjs") && _detected+=("Next.js")
+    (_has "nuxt.config.ts" || _has "nuxt.config.js") && _detected+=("Nuxt/Vue")
+    _has "tsconfig.json"    && _detected+=("TypeScript")
+    _has "package.json" && ! printf '%s\n' "${_detected[@]}" 2>/dev/null | grep -q "Next\|Nuxt\|TypeScript" && _detected+=("Node.js")
+    _has "go.mod"           && _detected+=("Go")
+    (_has "requirements.txt" || _has "pyproject.toml") && _detected+=("Python")
+    _has "Cargo.toml"       && _detected+=("Rust")
+    (_has "build.gradle" || _has "pom.xml") && _detected+=("Java")
+    _has "composer.json"    && _detected+=("PHP/Laravel")
+    _has "Dockerfile"       && _detected+=("Docker")
+    if [[ ${#_detected[@]} -gt 0 ]]; then
+      _auto_desc=$(printf '%s, ' "${_detected[@]}"); _auto_desc="${_auto_desc%, }"
+    fi
+  fi
+
   # ── Get description ──
   if [[ -z "$DESCRIPTION" ]]; then
-    printf "\n  ${_D}${L_DESC_HINT}${_R}\n"
-    _ask "$L_DESCRIBE" "" "DESCRIPTION"
+    if [[ -n "$_auto_desc" ]]; then
+      printf "\n  ${_D}${_GRN}✓${_R}${_D} ${_auto_desc}${_R}\n"
+      _ask "$L_DESCRIBE" "$_auto_desc" "DESCRIPTION"
+    else
+      printf "\n  ${_D}${L_DESC_HINT}${_R}\n"
+      _ask "$L_DESCRIBE" "" "DESCRIPTION"
+    fi
     [[ -z "$DESCRIPTION" ]] && { err "$L_DESC_REQUIRED"; exit 1; }
   fi
 
@@ -608,9 +636,16 @@ User: ${_ans}"
     match_persona "swift ios swiftui xcode apple uikit cocoa"              chris-lattner    || true
     match_persona "react redux jsx tsx vite frontend"                      dan-abramov      || true
     match_persona "next nextjs vercel turborepo t3"                        guillermo-rauch  || true
-    match_persona "node deno bun express koa hono"                         ryan-dahl        || true
-    match_persona "go golang grpc protobuf kubernetes k8s"                 rob-pike         || true
+    match_persona "vue vuejs nuxt pinia quasar"                            evan-you         || true
+    match_persona "node deno bun express koa hono fastify"                 ryan-dahl        || true
+    match_persona "go golang grpc protobuf"                                rob-pike         || true
     match_persona "python django flask fastapi pytorch tensorflow pandas"  guido-van-rossum || true
+    match_persona "rust cargo tokio axum actix wasm"                       graydon-hoare    || true
+    match_persona "java spring kotlin android gradle maven"                james-gosling    || true
+    match_persona "php laravel wordpress composer symfony"                  taylor-otwell    || true
+    match_persona "c cpp embedded linux kernel systems cmake"              linus-torvalds   || true
+    match_persona "sql postgres mysql redis elasticsearch data hadoop"     doug-cutting     || true
+    match_persona "docker terraform aws gcp azure ci cd devops kubernetes k8s infra" kelsey-hightower || true
     selected_personas+=("kent-beck")
   fi
 
@@ -782,46 +817,6 @@ PYEOF
   chmod 444 "$HOOKS_DST"/task-completed.sh "$HOOKS_DST"/teammate-idle.sh "$HOOKS_DST"/guard-hooks.sh
   info "$L_HOOKS_LOCKED"
 fi
-
-# External agents (auto-activate all detected)
-EXT_DIR="$SCRIPT_DIR/external-agents"
-EXAMPLES_DIR="$EXT_DIR/examples"
-
-cli_to_agent() {
-  case "$1" in
-    gemini) echo "gemini-reviewer" ;;
-    codex)  echo "codex-coder" ;;
-    openai) echo "gpt-security" ;;
-    *)      echo "" ;;
-  esac
-}
-
-agent_activated=false
-for cli in gemini codex openai; do
-  if command -v "$cli" &>/dev/null; then
-    example="$(cli_to_agent "$cli")"
-    if [[ -n "$example" && -d "$EXAMPLES_DIR/$example" && ! -d "$EXT_DIR/$example" ]]; then
-      cp -r "$EXAMPLES_DIR/$example" "$EXT_DIR/$example"
-      info "$L_EXT_AGENT $example ($cli CLI)"
-      agent_activated=true
-    fi
-  fi
-done
-
-api_found=false
-[[ -n "${OPENAI_API_KEY:-}" ]]    && api_found=true
-[[ -n "${GEMINI_API_KEY:-}" ]]    && api_found=true
-[[ -n "${ANTHROPIC_API_KEY:-}" ]] && api_found=true
-if [[ "$api_found" == "true" ]]; then
-  for api_agent in api-reviewer api-security; do
-    if [[ -d "$EXAMPLES_DIR/$api_agent" && ! -d "$EXT_DIR/$api_agent" ]]; then
-      cp -r "$EXAMPLES_DIR/$api_agent" "$EXT_DIR/$api_agent"
-      info "$L_EXT_AGENT $api_agent (API)"
-      agent_activated=true
-    fi
-  done
-fi
-[[ "$agent_activated" == "false" ]] && skip "$L_EXT_NONE"
 
 # Personas
 PROJ_PERSONAS="$PROJECT_PATH/.claude/personas"

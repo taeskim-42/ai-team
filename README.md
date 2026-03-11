@@ -1,8 +1,8 @@
 # AI Team
 
-Personas, hooks, and multi-LLM orchestration for [Claude Code Agent Teams](https://code.claude.com/docs/en/agent-teams).
+Personas, hooks, and quality-gate enforcement for [Claude Code Agent Teams](https://code.claude.com/docs/en/agent-teams).
 
-Agent Teams handles spawning and coordination natively. This repo adds **personas**, **quality-gate hooks**, and a **pluggable external agent system** that lets you call any LLM (Gemini, GPT, Codex, local models) as part of the workflow.
+Agent Teams handles spawning and coordination natively. This repo adds **personas** and **quality-gate hooks** (type check, tests, file size enforcement, output format validation).
 
 ## Quick Start
 
@@ -41,36 +41,24 @@ Copy the hooks to your project and register them in `.claude/settings.json`:
 }
 ```
 
-### 3. Add External Agents (optional)
-
-Copy an example from `external-agents/examples/` to `external-agents/`:
-
-```bash
-cp -r external-agents/examples/gemini-reviewer external-agents/gemini-reviewer
-```
-
-Edit `agent.sh` to set your LLM command. The `task-completed` hook will automatically dispatch to all configured external agents.
-
-### 4. Start a Team
+### 3. Start a Team
 
 Launch Claude Code and use `/teammates` to configure your team. Use the personas from `personas/` as system prompts, and refer to the [Team Lead Prompt Example](#templates) below for a starting prompt.
 
 ## Architecture
 
 ```
-┌──────────────────────────────┬─────────────────────────┐
-│   Claude Agent Teams         │   External Agents       │
-│   (native coordination)     │   (any LLM via CLI)     │
-│                              │                         │
-│   Lead ─► Dev (Claude)       │   gemini-reviewer/      │
-│        ─► Dev (Claude)       │   codex-coder/          │
-│        ─► QA  (Claude)  ◄────┤   gpt-security/         │
-│                              │   your-custom-agent/    │
-└──────────┬───────────────────┴────────────┬────────────┘
-           │        hooks/                  │
-           ├── task-completed.sh ───────────┘
-           ├── teammate-idle.sh    (triggers external agents
-           └── run-external-agents.sh  after tests pass)
+┌──────────────────────────────┐
+│   Claude Agent Teams         │
+│   (native coordination)     │
+│                              │
+│   Lead ─► Dev (Claude)       │
+│        ─► Dev (Claude)       │
+│        ─► QA  (Kent Beck)   │
+└──────────┬───────────────────┘
+           │        hooks/
+           ├── task-completed.sh   (type check + tests + file size)
+           └── teammate-idle.sh    (output format validation)
 ```
 
 ## Personas
@@ -97,51 +85,6 @@ A good persona prompt includes:
 4. **Comprehensibility** — Size limits, naming, error handling checklist
 5. **Output format** — Structured reporting (Changes Made, Decisions, Tests, QA Report)
 
-## External Agents
-
-Plug any LLM into the workflow. Each external agent is a directory with two files:
-
-```
-external-agents/
-├── _template/          # Copy this to create your own
-│   ├── agent.sh        # LLM command + trigger + input mode
-│   └── persona.md      # System prompt
-└── examples/
-    ├── gemini-reviewer/ # Long-context code review
-    ├── codex-coder/     # Alternative implementation suggestions
-    └── gpt-security/    # OWASP security audit
-```
-
-### `agent.sh` Configuration
-
-```bash
-COMMAND="gemini -m gemini-2.5-pro"   # Any CLI that reads stdin
-TRIGGER="task-completed"              # When to run
-INPUT="changed-files"                 # What to feed it
-```
-
-| `TRIGGER` | When |
-|-----------|------|
-| `task-completed` | After a dev teammate finishes (and tests pass) |
-| `pre-commit` | Before committing changes |
-| `on-demand` | Only when explicitly called |
-
-| `INPUT` | What gets piped to the LLM |
-|---------|---------------------------|
-| `changed-files` | Full content of changed files |
-| `full-diff` | `git diff` output |
-| `staged` | Staged files content |
-
-### Adding Your Own
-
-```bash
-cp -r external-agents/_template external-agents/my-agent
-# Edit agent.sh: set COMMAND, TRIGGER, INPUT
-# Edit persona.md: write your system prompt
-```
-
-The dispatcher (`hooks/run-external-agents.sh`) auto-discovers all agents in `external-agents/` and runs those matching the current trigger. Results are saved to `.claude/external-reviews/<agent-name>.md` for the QA teammate to consume.
-
 ## Hooks
 
 ### `task-completed.sh`
@@ -150,7 +93,6 @@ Runs when a dev teammate completes a task:
 1. **Type check** — Auto-detects language (tsc, mypy/pyright, go vet) — blocks on failure
 2. **Tests** — Auto-detects framework and runs tests (rspec, npm test, xcodebuild) — blocks on failure
 3. **File size check** — Warns about changed files exceeding 300 lines (configurable via `FILE_SIZE_THRESHOLD`)
-4. **External agents** — Dispatches to all `task-completed` external agents (non-blocking)
 
 QA teammates are excluded. Exits with code 2 on type check or test failure.
 
@@ -159,15 +101,6 @@ QA teammates are excluded. Exits with code 2 on type check or test failure.
 Validates output format before a teammate goes idle:
 - **Dev teammates**: Must include `## Changes Made`, `## Decisions`, and `## Tests` — blocks if any section is missing or too thin
 - **QA teammates**: Must include `## QA Report` and a `PASS`/`FAIL` verdict
-
-### `run-external-agents.sh`
-
-Generic dispatcher — scans `external-agents/*/agent.sh`, matches trigger, pipes persona + input to the LLM CLI, saves output. Called by other hooks or manually:
-
-```bash
-./hooks/run-external-agents.sh task-completed /path/to/project
-./hooks/run-external-agents.sh pre-commit /path/to/project
-```
 
 ## Templates
 
@@ -380,12 +313,7 @@ User describes task
   hook: tests run automatically            │
        │                                   │
        ▼                                   │
-  hook: external agents review in parallel │
-  (Gemini, GPT, Codex, ...)               │
-       │                                   │
-       ▼                                   │
   QA teammate reviews                      │
-  (own review + external reviews)          │
        │                                   │
    ┌───┴───┐                               │
    ▼       ▼                               │

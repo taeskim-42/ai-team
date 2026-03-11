@@ -7,7 +7,6 @@
 #   1. Type check (tsc / mypy / go vet) — blocks on failure
 #   2. Tests (auto-detected framework) — blocks on failure
 #   3. File size check (>300 lines) — blocks on failure
-#   4. External LLM agents — non-blocking
 #
 # Exit codes:
 #   0 — success (proceed)
@@ -216,11 +215,4 @@ size_output=$(check_file_sizes "$test_dir" 2>&1) || {
   echo "Small files are how the next agent understands the system without your context." >&2
   exit 2
 }
-
-# Phase 4: Run external LLM agents (non-blocking, best-effort)
-if [ -x "$SCRIPT_DIR/run-external-agents.sh" ]; then
-  nohup "$SCRIPT_DIR/run-external-agents.sh" "task-completed" "$test_dir" >/dev/null 2>&1 &
-  disown
-fi
-
 exit 0
