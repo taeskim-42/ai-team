@@ -102,6 +102,10 @@ if [ -n "${1:-}" ]; then
     for _cfg in "$PROJECTS_DIR"/*/team.config.sh; do
       [ -f "$_cfg" ] || continue
       _pp=$(grep -m1 '^PROJECT_PATH=\|^REPO_1_PATH=' "$_cfg" 2>/dev/null | head -1 | sed 's/^[^=]*=//;s/^"//;s/"$//' || true)
+      # Resolve relative paths to absolute
+      if [ -n "$_pp" ] && [ -d "$_pp" ]; then
+        _pp="$(cd "$_pp" && pwd)"
+      fi
       if [ "$_pp" = "$_resolved" ]; then
         _found_cfg="$_cfg"; break
       fi
